@@ -1,13 +1,13 @@
 """
-local_zep SQLite 存储层
-WAL 模式 + FTS5 trigram 索引，线程安全写操作
+local_zep SQLite storage layer
+WAL mode + FTS5 trigram index, thread-safe writes
 
-改进：
-- upsert_node 合并 labels/summary/attributes（不覆盖）
-- create_edge 设置 valid_at，并将相同关系的旧边标记为 expired/invalid
-  → 启用 PanoramaSearch 的历史事实区分功能
-- search_*_keyword 关键词兜底搜索（FTS5 无结果时使用）
-- get_graph_stats 用 COUNT 高效统计
+Improvements:
+- upsert_node merges labels/summary/attributes (no overwrites)
+- create_edge sets valid_at and marks old edges with the same relation as expired/invalid
+  → enables PanoramaSearch to distinguish current facts from historical facts
+- search_*_keyword keyword fallback search (used when FTS5 returns no results)
+- get_graph_stats uses COUNT for efficient statistics
 """
 
 import json
@@ -40,7 +40,7 @@ def init(db_path: str):
 
 
 def _get_conn() -> sqlite3.Connection:
-    """每个线程维护自己的连接（WAL 允许多读一写）"""
+    """Each thread maintains its own connection (WAL allows multiple readers, one writer)."""
     if not hasattr(_local, "conn") or _local.conn is None:
         conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
         conn.row_factory = sqlite3.Row
@@ -258,9 +258,9 @@ def _merge_attrs(old: dict, new: dict) -> dict:
 # ─── Nodes ────────────────────────────────────────────────────────────────────
 
 def upsert_node(graph_id: str, name: str, labels: list, summary: str, attrs: dict) -> str:
-    """按 (graph_id, name_lower) 去重。
-    已存在时合并 labels（取并集）、summary（累加）、attributes（dict 合并），
-    而非直接覆盖，保留跨 episode 积累的信息。
+    """Deduplicates by (graph_id, name_lower).
+    When a node already exists, merges labels (union), summary (accumulate), and attributes
+    (dict merge) rather than overwriting, preserving information accumulated across episodes.
     """
     name_lower = name.lower().strip()
     with _lock:
@@ -362,18 +362,18 @@ def create_edge(
     fact_type: str = "",
     attrs: Optional[dict] = None,
 ) -> str:
-    """创建边，并将相同 (src, tgt, relation) 的旧边标记为 expired/invalid。
+    """Creates an edge and marks existing edges with the same (src, tgt, relation) as expired/invalid.
 
-    这实现了 Zep Cloud 的时间性图谱功能子集：
-    - 新边获得 valid_at = now（事实生效时间）
-    - 旧的同关系边被设为 expired_at = invalid_at = now（历史事实）
-    → PanoramaSearch 可以正确区分当前事实与历史事实
+    This implements a subset of Zep Cloud's temporal graph functionality:
+    - The new edge receives valid_at = now (fact effective time)
+    - Old edges with the same relation are set to expired_at = invalid_at = now (historical facts)
+    → PanoramaSearch can correctly distinguish current facts from historical facts.
     """
     edge_uuid = str(_uuid.uuid4())
     now = _now()
     with _lock:
         conn = _get_conn()
-        # 将已有的相同关系边标记为历史
+        # Mark existing edges with the same relation as historical
         conn.execute(
             "UPDATE edges SET expired_at=?, invalid_at=? "
             "WHERE graph_id=? AND source_node_uuid=? AND target_node_uuid=? "
@@ -462,12 +462,13 @@ def get_episode(uuid_: str) -> Optional[EpisodeResponse]:
 # ─── Token extraction (shared by FTS and keyword fallback) ────────────────────
 
 def _extract_tokens(query: str) -> list:
-    """从查询字符串中提取有意义的搜索 token，按长度降序排列。
+    """Extract meaningful search tokens from the query string, sorted by descending length.
 
-    策略：
-    1. ASCII 词（英文实体名如 "Alice"，至少 2 字符）
-    2. 中文：在常见单字虚词（的了和与及或在是于以为被）及非 CJK 字符处切分，
-       保留 ≥2 字符的片段（每片段是潜在的名词或名词短语）
+    Strategy:
+    1. ASCII words (English entity names such as "Alice", at least 2 characters)
+    2. Chinese: split on common single-character function words (的了和与及或在是于以为被)
+       and non-CJK characters; keep segments of ≥2 characters (each segment is a
+       potential noun or noun phrase).
     """
     query = query.strip()
     if not query:
@@ -585,28 +586,32 @@ def search_edges_keyword(graph_ids: list, query: str, limit: int = 20) -> list:
 
 
 def _fts_escape(query: str) -> str:
-    """将查询字符串转换为 FTS5 trigram MATCH 表达式。
+    """Convert a query string into an FTS5 trigram MATCH expression.
 
-    FTS5 trigram tokenizer 做子串匹配：`"word"` 匹配所有含 "word" 子串的记录。
+    The FTS5 trigram tokenizer does substring matching: `"word"` matches all records
+    containing the substring "word".
 
-    短查询（≤6字符）直接用整体短语，适用于实体名等精确检索。
-    长查询（自然语言）拆分为关键词 OR 组合，提升召回率——避免把整句话
-    当成一个子串去搜导致命中率为零的问题（这是 Zep Cloud 语义搜索退化的
-    最主要场景，例如 "关于Alice的所有信息、活动、事件、关系和背景"）。
+    Short queries (≤6 characters) are used as a single phrase, suitable for precise
+    lookups such as entity names.
+    Long queries (natural language) are split into keyword OR combinations to improve
+    recall — this avoids the zero-hit problem that occurs when the entire sentence is
+    treated as one substring (the most common degraded-search scenario with Zep Cloud
+    semantic search, e.g. "all information, activities, events, relationships and
+    background about Alice").
     """
     query = query.strip()
     if not query:
         return '""'
 
-    # 短查询（纯实体名等）：整体短语搜索足够
+    # Short query (pure entity name, etc.): a single phrase search is sufficient
     if len(query) <= 6:
         return f'"{query.replace(chr(34), chr(34) * 2)}"'
 
-    # 长查询：提取有意义的 token，用 OR 组合
-    tokens = _extract_tokens(query)[:8]  # 最多 8 个 token
+    # Long query: extract meaningful tokens and combine with OR
+    tokens = _extract_tokens(query)[:8]  # at most 8 tokens
 
     if not tokens:
-        # 兜底：取前 12 字符做短语搜索
+        # Fallback: use the first 12 characters as a phrase search
         short = query[:12]
         return f'"{short.replace(chr(34), chr(34) * 2)}"'
 

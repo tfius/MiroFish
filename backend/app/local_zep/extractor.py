@@ -1,6 +1,7 @@
 """
-local_zep 实体/关系提取器
-复用现有 LLMClient，通过小型本地模型从文本中提取实体和关系
+local_zep entity/relationship extractor
+Reuses the existing LLMClient to extract entities and relationships from text
+via a small local model.
 """
 
 from __future__ import annotations
@@ -43,25 +44,25 @@ def _get_llm() -> LLMClient:
     return _llm
 
 
-_SYSTEM_PROMPT = """你是一个知识图谱构建助手。从给定文本中提取实体和关系，以JSON格式返回。
+_SYSTEM_PROMPT = """You are a knowledge graph construction assistant. Extract entities and relationships from the given text and return them in JSON format.
 
-输出格式（严格JSON）：
+Output format (strict JSON):
 {
   "entities": [
-    {"name": "实体名称", "type": "实体类型", "summary": "简短描述", "attributes": {}}
+    {"name": "entity name", "type": "entity type", "summary": "brief description", "attributes": {}}
   ],
   "relationships": [
-    {"source": "源实体名称", "relation": "关系名称", "target": "目标实体名称", "fact": "描述这个关系的一句话"}
+    {"source": "source entity name", "relation": "relation name", "target": "target entity name", "fact": "a single sentence describing this relationship"}
   ]
 }
 
-规则：
-- 实体名称要规范化（去除多余空格，统一大小写）
-- 只提取文本中明确提到的实体和关系
-- summary 简洁，不超过50字
-- 关系名称用动词或动词短语
-- 如果没有实体或关系，对应字段返回空数组
-- 只返回JSON，不要其他文字"""
+Rules:
+- Normalise entity names (remove extra whitespace, unify capitalisation)
+- Only extract entities and relationships explicitly mentioned in the text
+- Keep summaries concise, no more than 50 words
+- Use a verb or verb phrase for relation names
+- If there are no entities or relationships, return an empty array for the corresponding field
+- Return only JSON, no other text"""
 
 
 def _build_prompt_with_ontology(text: str, ontology: Optional[dict]) -> list:
@@ -71,22 +72,22 @@ def _build_prompt_with_ontology(text: str, ontology: Optional[dict]) -> list:
         edge_types = [e.get("name", "") for e in ontology.get("edge_types", [])]
         hints = []
         if entity_types:
-            hints.append(f"优先使用这些实体类型: {', '.join(entity_types)}")
+            hints.append(f"Prefer these entity types: {', '.join(entity_types)}")
         if edge_types:
-            hints.append(f"优先使用这些关系类型: {', '.join(edge_types)}")
+            hints.append(f"Prefer these relation types: {', '.join(edge_types)}")
         if hints:
-            system = system + "\n\n提示：\n" + "\n".join(hints)
+            system = system + "\n\nHints:\n" + "\n".join(hints)
 
     return [
         {"role": "system", "content": system},
-        {"role": "user", "content": f"请从以下文本中提取实体和关系：\n\n{text}"},
+        {"role": "user", "content": f"Please extract entities and relationships from the following text:\n\n{text}"},
     ]
 
 
 def extract(text: str, ontology: Optional[dict] = None) -> tuple[list, list]:
     """
-    从文本提取实体和关系。
-    返回 (entities, relationships)，失败时返回 ([], [])。
+    Extract entities and relationships from text.
+    Returns (entities, relationships); returns ([], []) on failure.
     """
     try:
         llm = _get_llm()
@@ -96,22 +97,22 @@ def extract(text: str, ontology: Optional[dict] = None) -> tuple[list, list]:
         rels = result.get("relationships", []) or []
         return entities, rels
     except Exception as e:
-        logger.warning(f"实体提取失败: {e}")
+        logger.warning(f"Entity extraction failed: {e}")
         return [], []
 
 
 def submit_extraction(ep_uuid: str, graph_id: str, data: str):
-    """提交后台提取任务"""
+    """Submit a background extraction task."""
     _get_executor().submit(_run_extraction, ep_uuid, graph_id, data)
 
 
 def _run_extraction(ep_uuid: str, graph_id: str, data: str):
-    """后台提取并写入数据库"""
+    """Background extraction and database write."""
     try:
         ontology = db.get_graph_ontology(graph_id)
         entities, rels = extract(data, ontology)
 
-        # 写入节点，缓存 name_lower → NodeResponse 供边写入复用
+        # Write nodes; cache name_lower → NodeResponse for reuse when writing edges
         node_cache: dict[str, object] = {}
         for e in entities:
             name = (e.get("name") or "").strip()
@@ -129,9 +130,9 @@ def _run_extraction(ep_uuid: str, graph_id: str, data: str):
                 if node:
                     node_cache[name.lower()] = node
             except Exception as ex:
-                logger.debug(f"写入节点失败 ({name}): {ex}")
+                logger.debug(f"Failed to write node ({name}): {ex}")
 
-        # 写入边，优先用缓存，缺失时回落到 DB 查询
+        # Write edges; prefer the cache, fall back to a DB query when not found
         for r in rels:
             src_name = (r.get("source") or "").strip()
             tgt_name = (r.get("target") or "").strip()
@@ -145,15 +146,15 @@ def _run_extraction(ep_uuid: str, graph_id: str, data: str):
                 if src and tgt:
                     db.create_edge(graph_id, relation, fact or relation, src, tgt)
             except Exception as ex:
-                logger.debug(f"写入边失败 ({src_name}-{relation}->{tgt_name}): {ex}")
+                logger.debug(f"Failed to write edge ({src_name}-{relation}->{tgt_name}): {ex}")
 
         logger.debug(
-            f"提取完成: ep={ep_uuid[:8]}, entities={len(entities)}, rels={len(rels)}"
+            f"Extraction complete: ep={ep_uuid[:8]}, entities={len(entities)}, rels={len(rels)}"
         )
     except Exception as e:
-        logger.warning(f"后台提取异常 ep={ep_uuid[:8]}: {e}")
+        logger.warning(f"Background extraction error ep={ep_uuid[:8]}: {e}")
     finally:
         try:
             db.mark_episode_processed(ep_uuid)
         except Exception as mark_err:
-            logger.error(f"mark_episode_processed 失败 ep={ep_uuid[:8]}: {mark_err}")
+            logger.error(f"mark_episode_processed failed ep={ep_uuid[:8]}: {mark_err}")

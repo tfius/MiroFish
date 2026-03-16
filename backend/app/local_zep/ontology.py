@@ -1,22 +1,22 @@
 """
-local_zep 本体存根
-与 zep_cloud.external_clients.ontology 接口兼容
+local_zep ontology stubs
+Compatible with the zep_cloud.external_clients.ontology interface.
 
-graph_builder.py 使用 type(name, (EntityModel,), attrs) 动态创建子类，
-这些类只需要存在，不需要业务逻辑。
+graph_builder.py uses type(name, (EntityModel,), attrs) to dynamically create subclasses;
+these classes only need to exist — no business logic is required.
 """
 
 
 class EntityModel:
-    """实体基类（存根）"""
+    """Entity base class (stub)."""
     pass
 
 
 class EntityText:
-    """实体文本字段类型（存根）"""
+    """Entity text field type (stub)."""
     pass
 
 
 class EdgeModel:
-    """边基类（存根）"""
+    """Edge base class (stub)."""
     pass

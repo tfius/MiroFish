@@ -1,5 +1,5 @@
 """
-local_zep FTS5 搜索
+local_zep FTS5 search
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ def search(
     scope: str = "edges",
 ) -> SearchResponse:
     """
-    scope='edges' → SearchResponse.edges 填充
-    scope='nodes' → SearchResponse.nodes 填充
+    scope='edges' → populates SearchResponse.edges
+    scope='nodes' → populates SearchResponse.nodes
     """
     if not graph_ids or not query:
         return SearchResponse()

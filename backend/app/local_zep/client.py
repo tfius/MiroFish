@@ -1,6 +1,6 @@
 """
-local_zep 客户端
-LocalZep 类精确匹配 zep_cloud.client.Zep 的接口
+local_zep client
+LocalZep exactly mirrors the interface of zep_cloud.client.Zep.
 """
 
 from __future__ import annotations
@@ -75,8 +75,8 @@ class _GraphNamespace:
         edges: Optional[dict] = None,
     ):
         """
-        从动态类中提取本体信息并存储到数据库。
-        entities: dict[str, type]  (EntityModel 子类)
+        Extract ontology information from dynamically created classes and store it in the database.
+        entities: dict[str, type]  (EntityModel subclasses)
         edges:    dict[str, tuple(type, list[EntityEdgeSourceTarget])]
         """
         ontology: dict[str, Any] = {"entity_types": [], "edge_types": []}
@@ -136,8 +136,8 @@ class _GraphNamespace:
 
 class LocalZep:
     """
-    本地 Zep 替代品，接口与 zep_cloud.client.Zep 完全兼容。
-    api_key 参数被接受但忽略（用于无缝替换）。
+    Local Zep drop-in replacement, fully interface-compatible with zep_cloud.client.Zep.
+    The api_key parameter is accepted but ignored (for seamless substitution).
     """
 
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):

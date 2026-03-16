@@ -1,6 +1,6 @@
 """
-local_zep 数据模型
-与 zep_cloud SDK 接口兼容的数据类
+local_zep data models
+Dataclasses compatible with the zep_cloud SDK interface.
 """
 
 from dataclasses import dataclass, field
@@ -45,26 +45,26 @@ class EpisodeResponse:
 
 
 class EpisodeData:
-    """匹配 zep_cloud.EpisodeData 接口"""
+    """Matches the zep_cloud.EpisodeData interface."""
     def __init__(self, data: str, type: str = "text"):
         self.data = data
         self.type = type
 
 
 class EntityEdgeSourceTarget:
-    """匹配 zep_cloud.EntityEdgeSourceTarget 接口"""
+    """Matches the zep_cloud.EntityEdgeSourceTarget interface."""
     def __init__(self, source: str, target: str):
         self.source = source
         self.target = target
 
 
 class InternalServerError(Exception):
-    """匹配 zep_cloud.InternalServerError，用于 zep_paging.py 重试逻辑"""
+    """Matches zep_cloud.InternalServerError; used by zep_paging.py retry logic."""
     pass
 
 
 @dataclass
 class SearchResponse:
-    """graph.search() 返回的结果对象"""
+    """Result object returned by graph.search()."""
     edges: list = field(default_factory=list)
     nodes: list = field(default_factory=list)
