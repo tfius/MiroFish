@@ -1,6 +1,6 @@
 """
-LLM客户端封装
-统一使用OpenAI格式调用
+LLM client wrapper
+Unified call interface using OpenAI format
 """
 
 import json
@@ -12,8 +12,8 @@ from ..config import Config
 
 
 class LLMClient:
-    """LLM客户端"""
-    
+    """LLM client"""
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -23,15 +23,15 @@ class LLMClient:
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
         self.model = model or Config.LLM_MODEL_NAME
-        
+
         if not self.api_key:
-            raise ValueError("LLM_API_KEY 未配置")
-        
+            raise ValueError("LLM_API_KEY is not configured")
+
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url
         )
-    
+
     def chat(
         self,
         messages: List[Dict[str, str]],
@@ -40,16 +40,16 @@ class LLMClient:
         response_format: Optional[Dict] = None
     ) -> str:
         """
-        发送聊天请求
-        
+        Send a chat request
+
         Args:
-            messages: 消息列表
-            temperature: 温度参数
-            max_tokens: 最大token数
-            response_format: 响应格式（如JSON模式）
-            
+            messages: List of messages
+            temperature: Temperature parameter
+            max_tokens: Maximum token count
+            response_format: Response format (e.g. JSON mode)
+
         Returns:
-            模型响应文本
+            Model response text
         """
         kwargs = {
             "model": self.model,
@@ -57,17 +57,17 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        
+
         if response_format:
             kwargs["response_format"] = response_format
-        
+
         response = self.client.chat.completions.create(**kwargs)
         msg = response.choices[0].message
         content = msg.content or ""
         # Some models (e.g. MiniMax M2.5) embed <think> blocks in content — strip them.
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
         return content
-    
+
     def chat_json(
         self,
         messages: List[Dict[str, str]],
@@ -75,22 +75,22 @@ class LLMClient:
         max_tokens: int = 4096
     ) -> Dict[str, Any]:
         """
-        发送聊天请求并返回JSON
-        
+        Send a chat request and return JSON
+
         Args:
-            messages: 消息列表
-            temperature: 温度参数
-            max_tokens: 最大token数
-            
+            messages: List of messages
+            temperature: Temperature parameter
+            max_tokens: Maximum token count
+
         Returns:
-            解析后的JSON对象
+            Parsed JSON object
         """
         response = self.chat(
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        # 清理markdown代码块标记
+        # Strip markdown code block markers
         cleaned_response = response.strip()
         cleaned_response = re.sub(r'^```(?:json)?\s*\n?', '', cleaned_response, flags=re.IGNORECASE)
         cleaned_response = re.sub(r'\n?```\s*$', '', cleaned_response)
@@ -101,4 +101,3 @@ class LLMClient:
         except json.JSONDecodeError as e:
             preview = cleaned_response[:200] if cleaned_response else "(empty)"
             raise ValueError(f"LLM returned invalid JSON ({e}): {preview}")
-
