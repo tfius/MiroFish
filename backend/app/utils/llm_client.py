@@ -62,8 +62,9 @@ class LLMClient:
             kwargs["response_format"] = response_format
         
         response = self.client.chat.completions.create(**kwargs)
-        content = response.choices[0].message.content
-        # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
+        msg = response.choices[0].message
+        content = msg.content or ""
+        # Some models (e.g. MiniMax M2.5) embed <think> blocks in content — strip them.
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
         return content
     
@@ -88,7 +89,6 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            response_format={"type": "json_object"}
         )
         # 清理markdown代码块标记
         cleaned_response = response.strip()
@@ -98,6 +98,7 @@ class LLMClient:
 
         try:
             return json.loads(cleaned_response)
-        except json.JSONDecodeError:
-            raise ValueError(f"LLM返回的JSON格式无效: {cleaned_response}")
+        except json.JSONDecodeError as e:
+            preview = cleaned_response[:200] if cleaned_response else "(empty)"
+            raise ValueError(f"LLM returned invalid JSON ({e}): {preview}")
 

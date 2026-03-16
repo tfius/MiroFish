@@ -32,8 +32,20 @@ class Config:
     LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'https://api.openai.com/v1')
     LLM_MODEL_NAME = os.environ.get('LLM_MODEL_NAME', 'gpt-4o-mini')
     
-    # Zep配置
-    ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
+    # Zep配置（兼容旧版，local_zep 模式下可设为任意值）
+    ZEP_API_KEY = os.environ.get('ZEP_API_KEY', 'local')
+
+    # 实体提取 LLM 配置（local_zep 使用，默认复用主 LLM）
+    LLM_EXTRACT_API_KEY = os.environ.get('LLM_EXTRACT_API_KEY') or os.environ.get('LLM_API_KEY')
+    LLM_EXTRACT_BASE_URL = os.environ.get('LLM_EXTRACT_BASE_URL') or os.environ.get('LLM_BASE_URL', 'https://api.openai.com/v1')
+    LLM_EXTRACT_MODEL_NAME = os.environ.get('LLM_EXTRACT_MODEL_NAME') or os.environ.get('LLM_MODEL_NAME', 'gpt-4o-mini')
+    LLM_EXTRACT_WORKERS = int(os.environ.get('LLM_EXTRACT_WORKERS', '2'))
+
+    # local_zep SQLite 数据库路径
+    LOCAL_ZEP_DB_PATH = os.environ.get(
+        'LOCAL_ZEP_DB_PATH',
+        os.path.join(os.path.dirname(__file__), '../data/local_zep.db')
+    )
     
     # 文件上传配置
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB
@@ -69,7 +81,6 @@ class Config:
         errors = []
         if not cls.LLM_API_KEY:
             errors.append("LLM_API_KEY 未配置")
-        if not cls.ZEP_API_KEY:
-            errors.append("ZEP_API_KEY 未配置")
+        # ZEP_API_KEY 不再是必须项（local_zep 模式不需要）
         return errors
 

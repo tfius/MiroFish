@@ -197,7 +197,7 @@ class OntologyGenerator:
         result = self.llm_client.chat_json(
             messages=messages,
             temperature=0.3,
-            max_tokens=4096
+            max_tokens=64000 # was 16000
         )
         
         # 验证和后处理
@@ -361,7 +361,7 @@ class OntologyGenerator:
             '"""',
             '',
             'from pydantic import Field',
-            'from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel',
+            'from app.local_zep.ontology import EntityModel, EntityText, EdgeModel',
             '',
             '',
             '# ============== 实体类型定义 ==============',

@@ -10,8 +10,8 @@ import threading
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 
-from zep_cloud.client import Zep
-from zep_cloud import EpisodeData, EntityEdgeSourceTarget
+from ..local_zep import Zep, EpisodeData, EntityEdgeSourceTarget
+from ..local_zep.ontology import EntityModel, EntityText, EdgeModel
 
 from ..config import Config
 from ..models.task import TaskManager, TaskStatus
@@ -201,10 +201,7 @@ class GraphBuilderService:
         import warnings
         from typing import Optional
         from pydantic import Field
-        from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel
-        
-        # 抑制 Pydantic v2 关于 Field(default=None) 的警告
-        # 这是 Zep SDK 要求的用法，警告来自动态类创建，可以安全忽略
+
         warnings.filterwarnings('ignore', category=UserWarning, module='pydantic')
         
         # Zep 保留名称，不能作为属性名
