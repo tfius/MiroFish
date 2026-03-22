@@ -122,10 +122,14 @@ LLM_API_KEY=your_api_key
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL_NAME=qwen-plus
 
-# Zep Cloud 配置
-# 每月免费额度即可支撑简单使用：https://app.getzep.com/
-ZEP_API_KEY=your_zep_api_key
+# 实体提取模型配置（可选 — 默认使用上方主模型）
+# 可使用更小/更快的模型在后台进行文档实体提取
+# LLM_EXTRACT_API_KEY=your_extract_api_key
+# LLM_EXTRACT_BASE_URL=http://localhost:1234/v1
+# LLM_EXTRACT_MODEL_NAME=qwen2.5-3b
 ```
+
+> **无需 Zep Cloud。** 本 fork 将云端知识图谱服务替换为完全本地的 SQLite 实现（`local_zep`），无需 `ZEP_API_KEY`。
 
 #### 2. 安装依赖
 

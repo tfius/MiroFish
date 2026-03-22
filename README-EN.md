@@ -122,10 +122,14 @@ LLM_API_KEY=your_api_key
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL_NAME=qwen-plus
 
-# Zep Cloud Configuration
-# Free monthly quota is sufficient for simple usage: https://app.getzep.com/
-ZEP_API_KEY=your_zep_api_key
+# Entity Extraction Model (optional — defaults to the main LLM above)
+# Use a smaller/faster model for background entity extraction from documents
+# LLM_EXTRACT_API_KEY=your_extract_api_key
+# LLM_EXTRACT_BASE_URL=http://localhost:1234/v1
+# LLM_EXTRACT_MODEL_NAME=qwen2.5-3b
 ```
+
+> **No Zep Cloud required.** This fork replaces the cloud knowledge graph service with a fully local SQLite-based implementation (`local_zep`). No `ZEP_API_KEY` needed.
 
 #### 2. Install Dependencies
 
