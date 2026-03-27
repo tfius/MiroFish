@@ -14,6 +14,7 @@ from ..config import Config
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from . import db
+from . import embedder
 
 logger = get_logger("mirofish.local_zep.extractor")
 
@@ -129,6 +130,8 @@ def _run_extraction(ep_uuid: str, graph_id: str, data: str):
                 node = db.get_node_by_name(graph_id, name)
                 if node:
                     node_cache[name.lower()] = node
+                    emb = embedder.encode(f"{name}. {e.get('summary', '')}")
+                    db.store_node_embedding(node.uuid_, emb)
             except Exception as ex:
                 logger.debug(f"Failed to write node ({name}): {ex}")
 
@@ -144,7 +147,9 @@ def _run_extraction(ep_uuid: str, graph_id: str, data: str):
                 src = node_cache.get(src_name.lower()) or db.get_node_by_name(graph_id, src_name)
                 tgt = node_cache.get(tgt_name.lower()) or db.get_node_by_name(graph_id, tgt_name)
                 if src and tgt:
-                    db.create_edge(graph_id, relation, fact or relation, src, tgt)
+                    edge_uuid = db.create_edge(graph_id, relation, fact or relation, src, tgt)
+                    emb = embedder.encode(fact or relation)
+                    db.store_edge_embedding(edge_uuid, emb)
             except Exception as ex:
                 logger.debug(f"Failed to write edge ({src_name}-{relation}->{tgt_name}): {ex}")
 

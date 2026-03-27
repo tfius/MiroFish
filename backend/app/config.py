@@ -41,6 +41,9 @@ class Config:
     LLM_EXTRACT_MODEL_NAME = os.environ.get('LLM_EXTRACT_MODEL_NAME') or os.environ.get('LLM_MODEL_NAME', 'gpt-4o-mini')
     LLM_EXTRACT_WORKERS = int(os.environ.get('LLM_EXTRACT_WORKERS', '2'))
 
+    # Embedding model for local_zep semantic search (sentence-transformers)
+    EMBED_MODEL_NAME = os.environ.get('EMBED_MODEL_NAME', 'sentence-transformers/all-MiniLM-L6-v2')
+
     # local_zep SQLite database path
     LOCAL_ZEP_DB_PATH = os.environ.get(
         'LOCAL_ZEP_DB_PATH',

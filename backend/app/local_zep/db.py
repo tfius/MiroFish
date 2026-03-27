@@ -19,6 +19,12 @@ import uuid as _uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+try:
+    import sqlite_vec
+    _SQLITE_VEC_AVAILABLE = True
+except ImportError:
+    _SQLITE_VEC_AVAILABLE = False
+
 from .models import EdgeResponse, EpisodeResponse, NodeResponse
 
 _DB_PATH: Optional[str] = None
@@ -37,6 +43,7 @@ def init(db_path: str):
     with _lock:
         conn = _get_conn()
         _create_schema(conn)
+        _migrate_schema(conn)
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -44,6 +51,10 @@ def _get_conn() -> sqlite3.Connection:
     if not hasattr(_local, "conn") or _local.conn is None:
         conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        if _SQLITE_VEC_AVAILABLE:
+            conn.enable_load_extension(True)
+            sqlite_vec.load(conn)
+            conn.enable_load_extension(False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         _local.conn = conn
@@ -150,6 +161,19 @@ def _create_schema(conn: sqlite3.Connection):
         END;
     """)
     conn.commit()
+
+
+def _migrate_schema(conn: sqlite3.Connection):
+    """Add columns introduced after initial schema creation (idempotent)."""
+    for ddl in (
+        "ALTER TABLE nodes ADD COLUMN embedding BLOB",
+        "ALTER TABLE edges ADD COLUMN embedding BLOB",
+    ):
+        try:
+            conn.execute(ddl)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
 
 # ─── Graph ────────────────────────────────────────────────────────────────────
@@ -581,6 +605,78 @@ def search_edges_keyword(graph_ids: list, query: str, limit: int = 20) -> list:
     rows = conn.execute(
         f"SELECT * FROM edges WHERE graph_id IN ({placeholders_g}) AND expired_at IS NULL AND ({where}) LIMIT ?",
         list(graph_ids) + params + [limit]
+    ).fetchall()
+    return [_row_to_edge(r) for r in rows]
+
+
+# ─── Embedding storage ────────────────────────────────────────────────────────
+
+def store_node_embedding(node_uuid: str, embedding: bytes):
+    """Store a pre-computed float32 embedding blob for a node."""
+    if not embedding:
+        return
+    with _lock:
+        conn = _get_conn()
+        conn.execute("UPDATE nodes SET embedding=? WHERE uuid=?", (embedding, node_uuid))
+        conn.commit()
+
+
+def store_edge_embedding(edge_uuid: str, embedding: bytes):
+    """Store a pre-computed float32 embedding blob for an edge."""
+    if not embedding:
+        return
+    with _lock:
+        conn = _get_conn()
+        conn.execute("UPDATE edges SET embedding=? WHERE uuid=?", (embedding, edge_uuid))
+        conn.commit()
+
+
+# ─── Vector search (cosine similarity via sqlite-vec scalar function) ─────────
+
+def search_nodes_vec(graph_ids: list, query_embedding: bytes, limit: int = 20) -> list:
+    """KNN search over node embeddings using vec_distance_cosine.
+
+    Falls back to empty list if sqlite-vec is not available or no embeddings exist.
+    Uses a full scan (suitable for graphs up to ~50k nodes).
+    """
+    if not _SQLITE_VEC_AVAILABLE or not graph_ids or not query_embedding:
+        return []
+    conn = _get_conn()
+    placeholders = ",".join("?" * len(graph_ids))
+    rows = conn.execute(
+        f"""
+        SELECT *, vec_distance_cosine(embedding, ?) AS dist
+        FROM nodes
+        WHERE graph_id IN ({placeholders})
+          AND embedding IS NOT NULL
+        ORDER BY dist
+        LIMIT ?
+        """,
+        [query_embedding] + list(graph_ids) + [limit]
+    ).fetchall()
+    return [_row_to_node(r) for r in rows]
+
+
+def search_edges_vec(graph_ids: list, query_embedding: bytes, limit: int = 20) -> list:
+    """KNN search over edge embeddings using vec_distance_cosine.
+
+    Only returns active edges (expired_at IS NULL).
+    """
+    if not _SQLITE_VEC_AVAILABLE or not graph_ids or not query_embedding:
+        return []
+    conn = _get_conn()
+    placeholders = ",".join("?" * len(graph_ids))
+    rows = conn.execute(
+        f"""
+        SELECT *, vec_distance_cosine(embedding, ?) AS dist
+        FROM edges
+        WHERE graph_id IN ({placeholders})
+          AND expired_at IS NULL
+          AND embedding IS NOT NULL
+        ORDER BY dist
+        LIMIT ?
+        """,
+        [query_embedding] + list(graph_ids) + [limit]
     ).fetchall()
     return [_row_to_edge(r) for r in rows]
 
