@@ -760,14 +760,22 @@ class ZepToolsService:
         logger.info(f"Getting edges for node {node_uuid[:8]}...")
         
         try:
-            # Get all graph edges and filter
-            all_edges = self.get_all_edges(graph_id)
+            # Use targeted DB query instead of loading all graph edges
+            raw_edges = self.zep.graph.node.get_entity_edges(node_uuid)
 
             result = []
-            for edge in all_edges:
-                # Check whether the edge is related to the specified node (as source or target)
-                if edge.source_node_uuid == node_uuid or edge.target_node_uuid == node_uuid:
-                    result.append(edge)
+            for edge in raw_edges:
+                result.append(EdgeInfo(
+                    uuid=edge.uuid_,
+                    name=edge.name,
+                    fact=edge.fact,
+                    source_node_uuid=edge.source_node_uuid,
+                    target_node_uuid=edge.target_node_uuid,
+                    valid_at=edge.valid_at,
+                    invalid_at=edge.invalid_at,
+                    expired_at=edge.expired_at,
+                    created_at=edge.created_at,
+                ))
 
             logger.info(f"Found {len(result)} edges related to the node")
             return result

@@ -10,6 +10,7 @@ from typing import Any, Optional
 @dataclass
 class NodeResponse:
     uuid_: str
+    graph_id: str
     name: str
     labels: list
     summary: str

@@ -203,10 +203,16 @@ def delete_graph(graph_id: str):
 def set_graph_ontology(graph_id: str, ontology: dict):
     with _lock:
         conn = _get_conn()
-        conn.execute(
+        cur = conn.execute(
             "UPDATE graphs SET ontology=? WHERE graph_id=?",
             (json.dumps(ontology, ensure_ascii=False), graph_id)
         )
+        if cur.rowcount == 0:
+            from ..utils.logger import get_logger as _get_logger
+            _get_logger("mirofish.local_zep.db").warning(
+                f"set_graph_ontology: graph '{graph_id}' not found — ontology not saved. "
+                "Call create_graph() first."
+            )
         conn.commit()
 
 
@@ -267,7 +273,7 @@ def _merge_summaries(old: str, new: str, max_len: int = 400) -> str:
         return old
     if not old:
         return new[:max_len]
-    combined = f"{old}；{new}"
+    combined = f"{old}. {new}"
     return combined[:max_len]
 
 
@@ -372,6 +378,7 @@ def get_node_edges(node_uuid: str) -> list:
 def _row_to_node(row) -> NodeResponse:
     return NodeResponse(
         uuid_=row["uuid"],
+        graph_id=row["graph_id"],
         name=row["name"],
         labels=json.loads(row["labels"]) if row["labels"] else [],
         summary=row["summary"] or "",
@@ -532,11 +539,11 @@ def search_nodes_fts(graph_ids: list, query: str, limit: int = 20) -> list:
     placeholders = ",".join("?" * len(graph_ids))
     rows = conn.execute(
         f"""
-        SELECT n.* FROM nodes_fts f
-        JOIN nodes n ON n.uuid = f.uuid
-        WHERE f MATCH ?
-          AND f.graph_id IN ({placeholders})
-        ORDER BY rank
+        SELECT n.* FROM nodes_fts
+        JOIN nodes n ON n.uuid = nodes_fts.uuid
+        WHERE nodes_fts MATCH ?
+          AND nodes_fts.graph_id IN ({placeholders})
+        ORDER BY nodes_fts.rank
         LIMIT ?
         """,
         [_fts_escape(query)] + list(graph_ids) + [limit]
@@ -551,12 +558,12 @@ def search_edges_fts(graph_ids: list, query: str, limit: int = 20) -> list:
     placeholders = ",".join("?" * len(graph_ids))
     rows = conn.execute(
         f"""
-        SELECT e.* FROM edges_fts f
-        JOIN edges e ON e.uuid = f.uuid
-        WHERE f MATCH ?
-          AND f.graph_id IN ({placeholders})
+        SELECT e.* FROM edges_fts
+        JOIN edges e ON e.uuid = edges_fts.uuid
+        WHERE edges_fts MATCH ?
+          AND edges_fts.graph_id IN ({placeholders})
           AND e.expired_at IS NULL
-        ORDER BY rank
+        ORDER BY edges_fts.rank
         LIMIT ?
         """,
         [_fts_escape(query)] + list(graph_ids) + [limit]

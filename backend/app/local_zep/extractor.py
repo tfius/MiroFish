@@ -132,10 +132,12 @@ def _run_extraction(ep_uuid: str, graph_id: str, data: str):
                 node = db.get_node_by_name(graph_id, name)
                 if node:
                     node_cache[name.lower()] = node
-                    emb = embedder.encode(f"{name}. {e.get('summary', '')}")
+                    # Use the merged summary from the DB (not the episode snippet)
+                    # so the embedding always represents the full accumulated knowledge.
+                    emb = embedder.encode(f"{name}. {node.summary}")
                     db.store_node_embedding(node.uuid_, emb)
             except Exception as ex:
-                logger.debug(f"Failed to write node ({name}): {ex}")
+                logger.warning(f"Failed to write node ({name}): {ex}")
 
         # Write edges; prefer the cache, fall back to a DB query when not found
         for r in rels:
@@ -153,7 +155,7 @@ def _run_extraction(ep_uuid: str, graph_id: str, data: str):
                     emb = embedder.encode(fact or relation)
                     db.store_edge_embedding(edge_uuid, emb)
             except Exception as ex:
-                logger.debug(f"Failed to write edge ({src_name}-{relation}->{tgt_name}): {ex}")
+                logger.warning(f"Failed to write edge ({src_name}-{relation}->{tgt_name}): {ex}")
 
         logger.debug(
             f"Extraction complete: ep={ep_uuid[:8]}, entities={len(entities)}, rels={len(rels)}"
