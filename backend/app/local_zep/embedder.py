@@ -15,6 +15,12 @@ from ..utils.logger import get_logger
 
 logger = get_logger("mirofish.local_zep.embedder")
 
+try:
+    from sentence_transformers import SentenceTransformer
+    _SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    _SENTENCE_TRANSFORMERS_AVAILABLE = False
+
 _model = None
 _model_lock = threading.Lock()
 
@@ -27,19 +33,30 @@ def _get_model():
     if _model is None:
         with _model_lock:
             if _model is None:
-                from sentence_transformers import SentenceTransformer
                 model_name = getattr(Config, "EMBED_MODEL_NAME", _DEFAULT_MODEL)
                 logger.info(f"Loading embedding model: {model_name}")
-                _model = SentenceTransformer(model_name)
-                logger.info("Embedding model ready")
+                m = SentenceTransformer(model_name)
+                # Validate output dimension matches expected EMBEDDING_DIM
+                test_vec = m.encode("test", normalize_embeddings=True)
+                if len(test_vec) != EMBEDDING_DIM:
+                    raise ValueError(
+                        f"Embedding model '{model_name}' produces {len(test_vec)}-dim vectors "
+                        f"but EMBEDDING_DIM={EMBEDDING_DIM}. "
+                        f"Set EMBED_MODEL_NAME to a {EMBEDDING_DIM}-dim model or update EMBEDDING_DIM."
+                    )
+                _model = m
+                logger.info(f"Embedding model ready ({EMBEDDING_DIM}-dim)")
     return _model
 
 
 def encode(text: str) -> bytes:
     """Encode text to a float32 bytes blob suitable for sqlite-vec storage.
 
-    Returns empty bytes on failure (caller should treat as no embedding).
+    Returns empty bytes if sentence-transformers is not installed, text is empty,
+    or inference fails. Callers must treat empty bytes as 'no embedding'.
     """
+    if not _SENTENCE_TRANSFORMERS_AVAILABLE:
+        return b""
     if not text or not text.strip():
         return b""
     try:

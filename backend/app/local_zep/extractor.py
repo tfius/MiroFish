@@ -20,6 +20,8 @@ logger = get_logger("mirofish.local_zep.extractor")
 
 _executor: Optional[ThreadPoolExecutor] = None
 _executor_lock = threading.Lock()
+_llm: Optional[LLMClient] = None
+_llm_lock = threading.Lock()
 
 
 def _get_executor() -> ThreadPoolExecutor:
@@ -31,17 +33,17 @@ def _get_executor() -> ThreadPoolExecutor:
                 _executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="local_zep")
     return _executor
 
-_llm: Optional[LLMClient] = None
-
 
 def _get_llm() -> LLMClient:
     global _llm
     if _llm is None:
-        _llm = LLMClient(
-            api_key=Config.LLM_EXTRACT_API_KEY,
-            base_url=Config.LLM_EXTRACT_BASE_URL,
-            model=Config.LLM_EXTRACT_MODEL_NAME,
-        )
+        with _llm_lock:
+            if _llm is None:
+                _llm = LLMClient(
+                    api_key=Config.LLM_EXTRACT_API_KEY,
+                    base_url=Config.LLM_EXTRACT_BASE_URL,
+                    model=Config.LLM_EXTRACT_MODEL_NAME,
+                )
     return _llm
 
 

@@ -21,6 +21,8 @@ dependencies = [
     "camel-ai==0.2.78",
     # torch 2.9.x dropped Intel Mac wheels; pin to last version with macos x86_64 support
     "torch>=2.2.0,<2.3.0",
+    # torch 2.2.x was compiled against NumPy 1.x; NumPy 2.x breaks it
+    "numpy>=1.0.0,<2.0.0",
     
     # 文件处理
     "PyMuPDF>=1.24.0",

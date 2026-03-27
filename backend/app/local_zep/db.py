@@ -52,9 +52,13 @@ def _get_conn() -> sqlite3.Connection:
         conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         if _SQLITE_VEC_AVAILABLE:
-            conn.enable_load_extension(True)
-            sqlite_vec.load(conn)
-            conn.enable_load_extension(False)
+            try:
+                conn.enable_load_extension(True)
+                sqlite_vec.load(conn)
+                conn.enable_load_extension(False)
+            except AttributeError:
+                # SQLite was compiled without extension-loading support (common on some Linux distros)
+                globals()["_SQLITE_VEC_AVAILABLE"] = False
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         _local.conn = conn
@@ -172,8 +176,9 @@ def _migrate_schema(conn: sqlite3.Connection):
         try:
             conn.execute(ddl)
             conn.commit()
-        except sqlite3.OperationalError:
-            pass  # column already exists
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise  # re-raise unexpected errors (read-only DB, corruption, etc.)
 
 
 # ─── Graph ────────────────────────────────────────────────────────────────────
@@ -636,49 +641,56 @@ def store_edge_embedding(edge_uuid: str, embedding: bytes):
 def search_nodes_vec(graph_ids: list, query_embedding: bytes, limit: int = 20) -> list:
     """KNN search over node embeddings using vec_distance_cosine.
 
-    Falls back to empty list if sqlite-vec is not available or no embeddings exist.
+    Falls back to empty list if sqlite-vec is unavailable, no query embedding, or on error.
     Uses a full scan (suitable for graphs up to ~50k nodes).
     """
     if not _SQLITE_VEC_AVAILABLE or not graph_ids or not query_embedding:
         return []
-    conn = _get_conn()
-    placeholders = ",".join("?" * len(graph_ids))
-    rows = conn.execute(
-        f"""
-        SELECT *, vec_distance_cosine(embedding, ?) AS dist
-        FROM nodes
-        WHERE graph_id IN ({placeholders})
-          AND embedding IS NOT NULL
-        ORDER BY dist
-        LIMIT ?
-        """,
-        [query_embedding] + list(graph_ids) + [limit]
-    ).fetchall()
-    return [_row_to_node(r) for r in rows]
+    try:
+        conn = _get_conn()
+        placeholders = ",".join("?" * len(graph_ids))
+        rows = conn.execute(
+            f"""
+            SELECT *, vec_distance_cosine(embedding, ?) AS dist
+            FROM nodes
+            WHERE graph_id IN ({placeholders})
+              AND embedding IS NOT NULL
+            ORDER BY dist
+            LIMIT ?
+            """,
+            [query_embedding] + list(graph_ids) + [limit]
+        ).fetchall()
+        return [_row_to_node(r) for r in rows]
+    except Exception:
+        return []
 
 
 def search_edges_vec(graph_ids: list, query_embedding: bytes, limit: int = 20) -> list:
     """KNN search over edge embeddings using vec_distance_cosine.
 
     Only returns active edges (expired_at IS NULL).
+    Falls back to empty list on any error (e.g. dimension mismatch from a model change).
     """
     if not _SQLITE_VEC_AVAILABLE or not graph_ids or not query_embedding:
         return []
-    conn = _get_conn()
-    placeholders = ",".join("?" * len(graph_ids))
-    rows = conn.execute(
-        f"""
-        SELECT *, vec_distance_cosine(embedding, ?) AS dist
-        FROM edges
-        WHERE graph_id IN ({placeholders})
-          AND expired_at IS NULL
-          AND embedding IS NOT NULL
-        ORDER BY dist
-        LIMIT ?
-        """,
-        [query_embedding] + list(graph_ids) + [limit]
-    ).fetchall()
-    return [_row_to_edge(r) for r in rows]
+    try:
+        conn = _get_conn()
+        placeholders = ",".join("?" * len(graph_ids))
+        rows = conn.execute(
+            f"""
+            SELECT *, vec_distance_cosine(embedding, ?) AS dist
+            FROM edges
+            WHERE graph_id IN ({placeholders})
+              AND expired_at IS NULL
+              AND embedding IS NOT NULL
+            ORDER BY dist
+            LIMIT ?
+            """,
+            [query_embedding] + list(graph_ids) + [limit]
+        ).fetchall()
+        return [_row_to_edge(r) for r in rows]
+    except Exception:
+        return []
 
 
 def _fts_escape(query: str) -> str:
